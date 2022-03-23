@@ -2111,10 +2111,10 @@ delivered in a subsequent response. `@include` and `@skip` take precedence over
 
 ```graphql example
 query myQuery($shouldDefer: Boolean) {
-   user {
-     name
-     ...someFragment @defer(label: 'someLabel', if: $shouldDefer)
-   }
+  user {
+    name
+    ...someFragment @defer(label: "someLabel", if: $shouldDefer)
+  }
 }
 fragment someFragment on User {
   id
