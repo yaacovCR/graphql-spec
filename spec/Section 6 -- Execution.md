@@ -834,7 +834,9 @@ an underlying database or networked service to produce a value. This
 necessitates the rest of a GraphQL executor to handle an asynchronous execution
 flow. In addition, a common implementation of {generator} is to leverage
 asynchronous iterators or asynchronous generators provided by many programming
-languages.
+languages. As an optimization, these asynchronous iterators or generators may
+yield payloads each containing a list of values, rather than a separate payload
+for each value.
 
 ### Value Completion
 
