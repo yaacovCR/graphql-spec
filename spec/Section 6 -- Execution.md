@@ -142,12 +142,12 @@ ExecuteQuery(query, schema, variableValues, initialValue):
     {hasNext} with the value {true}.
   - Let {iterator} be the result of running
     {YieldSubsequentPayloads(subsequentPayloads)}.
-  - For each {payload} yielded by {iterator}:
+  - For each {payloadList} yielded by {iterator}:
     - If a termination signal is received:
       - Send a termination signal to {iterator}.
       - Return.
     - Otherwise:
-      - Yield {payload}.
+      - Yield {payloadList}.
 
 ### Mutation
 
@@ -175,12 +175,12 @@ ExecuteMutation(mutation, schema, variableValues, initialValue):
     {hasNext} with the value {true}.
   - Let {iterator} be the result of running
     {YieldSubsequentPayloads(subsequentPayloads)}.
-  - For each {payload} yielded by {iterator}:
+  - For each {payloadList} yielded by {iterator}:
     - If a termination signal is received:
       - Send a termination signal to {iterator}.
       - Return.
     - Otherwise:
-      - Yield {payload}.
+      - Yield {payloadList}.
 
 ### Subscription
 
@@ -337,12 +337,12 @@ ExecuteSubscriptionEvent(subscription, schema, variableValues, initialValue):
     {hasNext} with the value {true}.
   - Let {iterator} be the result of running
     {YieldSubsequentPayloads(subsequentPayloads)}.
-  - For each {payload} yielded by {iterator}:
+  - For each {payloadList} yielded by {iterator}:
     - If a termination signal is received:
       - Send a termination signal to {iterator}.
       - Return.
     - Otherwise:
-      - Yield {payload}.
+      - Yield {payloadList}.
 
 Note: The {ExecuteSubscriptionEvent()} algorithm is intentionally similar to
 {ExecuteQuery()} since this is how each event result is produced.
@@ -372,21 +372,24 @@ YieldSubsequentPayloads(subsequentPayloads):
     - If {record} contains {iterator}:
       - Send a termination signal to {iterator}.
   - Return.
-- Let {record} be the first item in {subsequentPayloads} with a completed
-  {dataExecution}.
-  - Remove {record} from {subsequentPayloads}.
-  - If {isCompletedIterator} on {record} is {true}:
-    - If {subsequentPayloads} is empty:
-      - Yield a map containing a field `hasNext` with the value {false}.
-      - Return.
-    - If {subsequentPayloads} is not empty:
-      - Continue to the next record in {subsequentPayloads}.
-  - Let {payload} be the completed result returned by {dataExecution}.
-  - If {record} is not the final element in {subsequentPayloads}:
-    - Add an entry to {payload} named `hasNext` with the value {true}.
-  - If {record} is the final element in {subsequentPayloads}:
-    - Add an entry to {payload} named `hasNext` with the value {false}.
-  - Yield {payload}
+- Let {completed} be the next set of items in {subsequentPayloads} with
+  completed {dataExecution} results.
+  - Initialize {payloadList} to an empty list.
+  - For each {record} in {completed}.
+    - Remove {record} from {subsequentPayloads}.
+    - If {isCompletedIterator} on {record} is {true}:
+      - If {subsequentPayloads} is empty:
+        - Yield a map containing a field `hasNext` with the value {false}.
+        - Return.
+      - If {subsequentPayloads} is not empty:
+        - Continue to the next record in {subsequentPayloads}.
+    - Let {payload} be the completed result returned by {dataExecution}.
+    - If {record} is not the final element in {subsequentPayloads}:
+      - Add an entry to {payload} named `hasNext` with the value {true}.
+    - If {record} is the final element in {subsequentPayloads}:
+      - Add an entry to {payload} named `hasNext` with the value {false}.
+    - Append {payload} to {payloadList}
+  - Yield {payloadList}
 
 ## Executing Selection Sets
 
