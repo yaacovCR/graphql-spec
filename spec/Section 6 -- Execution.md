@@ -965,8 +965,8 @@ directive.
 
 #### Execute Stream Field
 
-ExecuteStreamField(label, iterator, index, fields, innerType, path streamRecord,
-variableValues, subsequentPayloads):
+ExecuteStreamField(label, iterator, index, fields, innerType, path,
+streamRecord, variableValues, subsequentPayloads):
 
 - Let {streamRecord} be an async payload record created from {label}, {path},
   and {iterator}.
