@@ -1015,7 +1015,7 @@ subsequentPayloads, asyncRecord):
       - Let {resolvedItem} be the result of calling {CompleteValue(innerType,
         fields, resultItem, variableValues, itemPath, subsequentPayloads,
         asyncRecord)}.
-      - Append {resolvedItem} to {initialItems}.
+      - Append {resolvedItem} to {items}.
       - Increment {index}.
   - Return {items}.
 - If {fieldType} is a Scalar or Enum type:
