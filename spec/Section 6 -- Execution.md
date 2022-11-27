@@ -132,22 +132,22 @@ An initial value may be provided when executing a query operation.
 
 ExecuteQuery(query, schema, variableValues, initialValue):
 
-- Let {subsequentPayloads} be an empty list.
+- Let {publisherRecord} be the result of {CreatePublisher()}.
 - Let {queryType} be the root Query type in {schema}.
 - Assert: {queryType} is an Object type.
 - Let {selectionSet} be the top level Selection Set in {query}.
 - Let {data} be the result of running {ExecuteSelectionSet(selectionSet,
-  queryType, initialValue, variableValues, subsequentPayloads)} _normally_
+  queryType, initialValue, variableValues, publisherRecord)} _normally_
   (allowing parallelization).
 - Let {errors} be the list of all _field error_ raised while executing the
   selection set.
-- If {subsequentPayloads} is empty:
+- If {HasSubsequentPayloads(publisherRecord)} is {false}:
   - Return an unordered map containing {data} and {errors}.
-- If {subsequentPayloads} is not empty:
+- Otherwise:
   - Let {initialResponse} be an unordered map containing {data}, {errors}, and
     an entry named {hasNext} with the value {true}.
   - Let {iterator} be the result of running
-    {YieldSubsequentPayloads(initialResponse, subsequentPayloads)}.
+    {YieldSubsequentPayloads(initialResponse, publisherRecord)}.
   - For each {payload} yielded by {iterator}:
     - If a termination signal is received:
       - Send a termination signal to {iterator}.
@@ -167,21 +167,21 @@ mutations ensures against race conditions during these side-effects.
 
 ExecuteMutation(mutation, schema, variableValues, initialValue):
 
-- Let {subsequentPayloads} be an empty list.
+- Let {publisherRecord} be the result of {CreatePublisher()}.
 - Let {mutationType} be the root Mutation type in {schema}.
 - Assert: {mutationType} is an Object type.
 - Let {selectionSet} be the top level Selection Set in {mutation}.
 - Let {data} be the result of running {ExecuteSelectionSet(selectionSet,
-  mutationType, initialValue, variableValues, subsequentPayloads)} _serially_.
+  mutationType, initialValue, variableValues, publisherRecord)} _serially_.
 - Let {errors} be the list of all _field error_ raised while executing the
   selection set.
-- If {subsequentPayloads} is empty:
+- If {HasSubsequentPayloads(publisherRecord)} is {false}:
   - Return an unordered map containing {data} and {errors}.
-- If {subsequentPayloads} is not empty:
+- Otherwise:
   - Let {initialResponse} be an unordered map containing {data}, {errors}, and
     an entry named {hasNext} with the value {true}.
   - Let {iterator} be the result of running
-    {YieldSubsequentPayloads(initialResponse, subsequentPayloads)}.
+    {YieldSubsequentPayloads(initialResponse, publisherRecord)}.
   - For each {payload} yielded by {iterator}:
     - If a termination signal is received:
       - Send a termination signal to {iterator}.
@@ -353,14 +353,50 @@ Unsubscribe(responseStream):
 
 - Cancel {responseStream}
 
+## Publisher Record
+
+If an operation contains `@defer` or `@stream` directives, execution may also
+result in an Async Payload Record stream in addition to the initial response.
+The Async Payload Records may be published lazily as requested, with the
+internal state of the unpublished stream held by a Publisher Record unique to
+the request.
+
+- {subsequentPayloads}: the set of Async Payload Records for this response that
+  have not yet been published.
+
+## Create Publisher
+
+CreatePublisher():
+
+- Let {publisherRecord} be a publisher record.
+- Initialize {subsequentPayloads} on {publisherRecord} to an empty set.
+- Return {publisherRecord}.
+
+## Has Subsequent Payloads
+
+HasSubsequentPayloads(publisherRecord):
+
+- Let {subsequentPayloads} be the corresponding entry on {publisherRecord}.
+- Let {size} be the number of payloads within {subsequentPayloads}.
+- If {size} is greater than zero, return {true}.
+- Return {false}.
+
+## Add Payload
+
+AddPayload(payload, publisherRecord):
+
+- Let {subsequentPayloads} be the corresponding entry on {publisherRecord}.
+- Add {payload} to {subsequentPayloads}.
+
 ## Yield Subsequent Payloads
 
 If an operation contains subsequent payload records resulting from `@stream` or
 `@defer` directives, the {YieldSubsequentPayloads} algorithm defines how the
 payloads should be processed.
 
-YieldSubsequentPayloads(initialResponse, subsequentPayloads):
+YieldSubsequentPayloads(initialResponse, publisherRecord):
 
+- Let {subsequentPayloads} be the corresponding entry on {publisherRecord}.
 - Let {initialRecords} be any items in {subsequentPayloads} with a completed
   {dataExecution}.
 - Initialize {initialIncremental} to an empty list.
@@ -411,10 +447,9 @@ represented field in the grouped field set produces an entry into a response
 map.
 
 ExecuteSelectionSet(selectionSet, objectType, objectValue, variableValues, path,
-subsequentPayloads, asyncRecord):
+publisherRecord, asyncRecord):
 
 - If {path} is not provided, initialize it to an empty list.
-- If {subsequentPayloads} is not provided, initialize it to the empty set.
 - Let {groupedFieldSet} and {deferredGroupedFieldsList} be the result of
   {CollectFields(objectType, selectionSet, variableValues, path, asyncRecord)}.
 - Initialize {resultMap} to an empty ordered map.
@@ -425,12 +460,11 @@ subsequentPayloads, asyncRecord):
     {objectType}.
   - If {fieldType} is defined:
     - Let {responseValue} be {ExecuteField(objectType, objectValue, fieldType,
-      fields, variableValues, path, subsequentPayloads, asyncRecord)}.
+      fields, variableValues, path, publisherRecord, asyncRecord)}.
     - Set {responseValue} as the value for {responseKey} in {resultMap}.
 - For each {deferredGroupFieldSet} and {label} in {deferredGroupedFieldsList}
   - Call {ExecuteDeferredFragment(label, objectType, objectValue,
-    deferredGroupFieldSet, path, variableValues, asyncRecord,
-    subsequentPayloads)}
+    deferredGroupFieldSet, path, variableValues, asyncRecord, publisherRecord)}
 - Return {resultMap}.
 
 Note: {resultMap} is ordered by which fields appear first in the operation. This
@@ -445,23 +479,23 @@ either resolving to {null} if allowed or further propagated to a parent field.
 If this occurs, any sibling fields which have not yet executed or have not yet
 yielded a value may be cancelled to avoid unnecessary work.
 
-Additionally, async payload records in {subsequentPayloads} must be filtered if
-their path points to a location that has resolved to {null} due to propagation
-of a field error. This is described in
-[Filter Subsequent Payloads](#sec-Filter-Subsequent-Payloads). These async
-payload records must be removed from {subsequentPayloads} and their result must
-not be sent to clients. If these async records have not yet executed or have not
-yet yielded a value they may also be cancelled to avoid unnecessary work.
+Additionally, unpublished Async Payload Records must be filtered if their path
+points to a location that has resolved to {null} due to propagation of a field
+error. This is described in
+[Filter Subsequent Payloads](#sec-Filter-Subsequent-Payloads). The result of
+these async payload records must not be sent to clients. If these async records
+have not yet executed or have not yet yielded a value they may also be cancelled
+to avoid unnecessary work.
 
 Note: See [Handling Field Errors](#sec-Handling-Field-Errors) for more about
 this behavior.
 
 ### Filter Subsequent Payloads
 
-When a field error is raised, there may be async payload records in
-{subsequentPayloads} with a path that points to a location that has been removed
-or set to null due to null propagation. These async payload records must be
-removed from subsequent payloads and their results must not be sent to clients.
+When a field error is raised, there may be unpublished async payload records
+with a path that points to a location that has been removed or set to null due
+to null propagation. The results of these async payload records must not be sent
+to clients.
 
 In {FilterSubsequentPayloads}, {nullPath} is the path which has resolved to null
 after propagation as a result of a field error. {currentAsyncRecord} is the
@@ -469,8 +503,9 @@ async payload record where the field error was raised. {currentAsyncRecord} will
 not be set for field errors that were raised during the initial execution
 outside of {ExecuteDeferredFragment} or {ExecuteStreamField}.
 
-FilterSubsequentPayloads(subsequentPayloads, nullPath, currentAsyncRecord):
+FilterSubsequentPayloads(publisherRecord, nullPath, currentAsyncRecord):
 
+- Let {subsequentPayloads} be the corresponding entry on {publisherRecord}.
 - For each {asyncRecord} in {subsequentPayloads}:
   - If {asyncRecord} is the same record as {currentAsyncRecord}:
     - Continue to the next record in {subsequentPayloads}.
@@ -775,7 +810,7 @@ All Async Payload Records are structures containing:
 #### Execute Deferred Fragment
 
 ExecuteDeferredFragment(label, objectType, objectValue, groupedFieldSet, path,
-variableValues, parentRecord, subsequentPayloads):
+variableValues, parentRecord, publisherRecord):
 
 - Let {deferRecord} be an async payload record created from {label} and {path}.
 - Initialize {errors} on {deferRecord} to an empty list.
@@ -789,7 +824,7 @@ variableValues, parentRecord, subsequentPayloads):
       {objectType}.
     - If {fieldType} is defined:
       - Let {responseValue} be {ExecuteField(objectType, objectValue, fieldType,
-        fields, variableValues, path, subsequentPayloads, asyncRecord)}.
+        fields, variableValues, path, publisherRecord, asyncRecord)}.
       - Set {responseValue} as the value for {responseKey} in {resultMap}.
   - Append any encountered field errors to {errors}.
   - If {parentRecord} is defined:
@@ -806,7 +841,7 @@ variableValues, parentRecord, subsequentPayloads):
   - Add an entry to {payload} named `path` with the value {path}.
   - Return {payload}.
 - Set {dataExecution} on {deferredFragmentRecord}.
-- Append {deferRecord} to {subsequentPayloads}.
+- Call {AddPayload(deferRecord, publisherRecord)}.
 
 ## Executing Fields
 
@@ -817,7 +852,7 @@ finally completes that value either by recursively executing another selection
 set or coercing a scalar value.
 
 ExecuteField(objectType, objectValue, fieldType, fields, variableValues, path,
-subsequentPayloads, asyncRecord):
+publisherRecord, asyncRecord):
 
 - Let {field} be the first entry in {fields}.
 - Let {fieldName} be the field name of {field}.
@@ -827,7 +862,7 @@ subsequentPayloads, asyncRecord):
 - Let {resolvedValue} be {ResolveFieldValue(objectType, objectValue, fieldName,
   argumentValues)}.
 - Let {result} be the result of calling {CompleteValue(fieldType, fields,
-  resolvedValue, variableValues, path, subsequentPayloads, asyncRecord)}.
+  resolvedValue, variableValues, path, publisherRecord, asyncRecord)}.
 - Return {result}.
 
 ### Coercing Field Arguments
@@ -931,7 +966,7 @@ yielded items satisfies `initialCount` specified on the `@stream` directive.
 #### Execute Stream Field
 
 ExecuteStreamField(label, iterator, index, fields, innerType, path,
-streamRecord, variableValues, subsequentPayloads):
+streamRecord, variableValues, publisherRecord):
 
 - Let {streamRecord} be an async payload record created from {label}, {path},
   and {iterator}.
@@ -949,11 +984,11 @@ streamRecord, variableValues, subsequentPayloads):
   - Otherwise:
     - Let {item} be the item retrieved from {iterator}.
     - Let {data} be the result of calling {CompleteValue(innerType, fields,
-      item, variableValues, itemPath, subsequentPayloads, parentRecord)}.
+      item, variableValues, itemPath, publisherRecord, parentRecord)}.
     - Append any encountered field errors to {errors}.
     - Increment {index}.
     - Call {ExecuteStreamField(label, iterator, index, fields, innerType, path,
-      streamRecord, variableValues, subsequentPayloads)}.
+      streamRecord, variableValues, publisherRecord)}.
     - If a field error was raised, causing a {null} to be propagated to {data},
       and {innerType} is a Non-Nullable type:
       - Add an entry to {payload} named `items` with the value {null}.
@@ -969,10 +1004,10 @@ streamRecord, variableValues, subsequentPayloads):
     - Wait for the result of {dataExecution} on {parentRecord}.
   - Return {payload}.
 - Set {dataExecution} on {streamRecord}.
-- Append {streamRecord} to {subsequentPayloads}.
+- Call {AddPayload(streamRecord, publisherRecord)}.
 
-CompleteValue(fieldType, fields, result, variableValues, path,
-subsequentPayloads, asyncRecord):
+CompleteValue(fieldType, fields, result, variableValues, path, publisherRecord,
+asyncRecord):
 
 - If the {fieldType} is a Non-Null type:
   - Let {innerType} be the inner type of {fieldType}.
@@ -1004,7 +1039,7 @@ subsequentPayloads, asyncRecord):
     - If {streamDirective} is defined and {index} is greater than or equal to
       {initialCount}:
       - Call {ExecuteStreamField(label, iterator, index, fields, innerType,
-        path, asyncRecord, subsequentPayloads)}.
+        path, asyncRecord, publisherRecord)}.
       - Return {items}.
     - Otherwise:
       - Wait for the next item from {result} via the {iterator}.
@@ -1012,7 +1047,7 @@ subsequentPayloads, asyncRecord):
       - Let {resultItem} be the item retrieved from {result}.
       - Let {itemPath} be {path} with {index} appended.
       - Let {resolvedItem} be the result of calling {CompleteValue(innerType,
-        fields, resultItem, variableValues, itemPath, subsequentPayloads,
+        fields, resultItem, variableValues, itemPath, publisherRecord,
         asyncRecord)}.
       - Append {resolvedItem} to {items}.
       - Increment {index}.
@@ -1026,7 +1061,7 @@ subsequentPayloads, asyncRecord):
     - Let {objectType} be {ResolveAbstractType(fieldType, result)}.
   - Let {subSelectionSet} be the result of calling {MergeSelectionSets(fields)}.
   - Return the result of evaluating {ExecuteSelectionSet(subSelectionSet,
-    objectType, result, variableValues, path, subsequentPayloads, asyncRecord)}
+    objectType, result, variableValues, path, publisherRecord, asyncRecord)}
     _normally_ (allowing for parallelization).
 
 **Coercing Results**
