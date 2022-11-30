@@ -457,7 +457,7 @@ YieldSubsequentPayloads(initialResponse, publisherRecord):
   - Add an entry to {initialResponse} named `incremental` containing the value
     {incremental}.
 - Yield {initialResponse}.
-- While {subsequentPayloads} is not empty:
+- While {HasNext(publisherRecord)} is {true}:
   - If a termination signal is received:
     - For each {record} in {subsequentPayloads}:
       - If {record} contains {iterator}:
@@ -470,17 +470,14 @@ YieldSubsequentPayloads(initialResponse, publisherRecord):
     initialized to an empty list.
   - Let {current} be the corresponding entry on {publisherRecord}.
   - For each {record} in {current}:
-    - Remove {record} from {subsequentPayloads}.
+    - Remove {record} from {current}.
     - If {isCompletedIterator} on {record} is {true}:
-      - Continue to the next record in {records}.
+      - Continue to the next record in {current}.
     - Let {payload} be the corresponding entry on {record}.
-    - Append {payload} to the {incremental} entry on {subsequentResponse}.
-  - If {subsequentPayloads} is empty:
-    - Add an entry to {subsequentResponse} named `hasNext` with the value
-      {false}.
-  - Otherwise, if {subsequentPayloads} is not empty:
-    - Add an entry to {subsequentResponse} named `hasNext` with the value
-      {true}.
+  - Append {payload} to the {incremental} entry on {subsequentResponse}.
+  - Let {hasNext} be the result of {HasNext(publisherRecord)}.
+  - Add an entry to {subsequentResponse} named `hasNext` with the value
+    {hasNext}.
   - Yield {subsequentResponse}
 
 ## Executing Selection Sets
