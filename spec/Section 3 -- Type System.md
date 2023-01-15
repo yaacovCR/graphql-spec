@@ -2126,10 +2126,7 @@ scalar UUID @specifiedBy(url: "https://tools.ietf.org/html/rfc4122")
 ### @defer
 
 ```graphql
-directive @defer(
-  label: String
-  if: Boolean! = true
-) on FRAGMENT_SPREAD | INLINE_FRAGMENT
+directive @defer(if: Boolean! = true) on FRAGMENT_SPREAD | INLINE_FRAGMENT
 ```
 
 The `@defer` directive may be provided for fragment spreads and inline fragments
@@ -2144,7 +2141,7 @@ delivered in a subsequent response. `@include` and `@skip` take precedence over
 query myQuery($shouldDefer: Boolean) {
   user {
     name
-    ...someFragment @defer(label: "someLabel", if: $shouldDefer)
+    ...someFragment @defer(if: $shouldDefer)
   }
 }
 fragment someFragment on User {
@@ -2161,20 +2158,11 @@ fragment someFragment on User {
   [related note](#note-088b7)). When `false`, fragment will not be deferred and
   data will be included in the initial response. Defaults to `true` when
   omitted.
-- `label: String` - May be used by GraphQL clients to identify the data from
-  responses and associate it with the corresponding defer directive. If
-  provided, the GraphQL service must add it to the corresponding payload.
-  `label` must be unique label across all `@defer` and `@stream` directives in a
-  document. `label` must not be provided as a variable.
 
 ### @stream
 
 ```graphql
-directive @stream(
-  label: String
-  if: Boolean! = true
-  initialCount: Int = 0
-) on FIELD
+directive @stream(if: Boolean! = true, initialCount: Int = 0) on FIELD
 ```
 
 The `@stream` directive may be provided for a field of `List` type so that the
@@ -2186,7 +2174,7 @@ responses. `@include` and `@skip` take precedence over `@stream`.
 query myQuery($shouldStream: Boolean) {
   user {
     friends(first: 10) {
-      nodes @stream(label: "friendsStream", initialCount: 5, if: $shouldStream)
+      nodes @stream(initialCount: 5, if: $shouldStream)
     }
   }
 }
@@ -2198,11 +2186,6 @@ query myQuery($shouldStream: Boolean) {
   [related note](#note-088b7)). When `false`, the field will not be streamed and
   all list items will be included in the initial response. Defaults to `true`
   when omitted.
-- `label: String` - May be used by GraphQL clients to identify the data from
-  responses and associate it with the corresponding stream directive. If
-  provided, the GraphQL service must add it to the corresponding payload.
-  `label` must be unique label across all `@defer` and `@stream` directives in a
-  document. `label` must not be provided as a variable.
 - `initialCount: Int` - The number of list items the service should return as
   part of the initial response. If omitted, defaults to `0`. A field error will
   be raised if the value of this argument is less than `0`.

@@ -430,8 +430,8 @@ objectValue, variableValues, path, subsequentPayloads, asyncRecord):
     - Let {responseValue} be {ExecuteField(objectType, objectValue, fieldType,
       fields, variableValues, path, subsequentPayloads, asyncRecord)}.
     - Set {responseValue} as the value for {responseKey} in {resultMap}.
-- For each {deferredGroupFieldSet} and {label} in {deferredGroupedFieldsList}
-  - Call {ExecuteDeferredFragment(label, objectType, objectValue,
+- For each {deferredGroupFieldSet} in {deferredGroupedFieldsList}
+  - Call {ExecuteDeferredFragment(objectType, objectValue,
     deferredGroupFieldSet, path, variableValues, asyncRecord,
     subsequentPayloads)}
 - Return {resultMap}.
@@ -695,13 +695,10 @@ deferredGroupedFieldsList):
       with the next {selection} in {selectionSet}.
     - Let {fragmentSelectionSet} be the top-level selection set of {fragment}.
     - If {deferDirective} is defined:
-      - Let {label} be the value or the variable to {deferDirective}'s {label}
-        argument.
       - Let {deferredGroupedFields} be the result of calling
         {CollectFields(objectType, fragmentSelectionSet, variableValues,
         visitedFragments, deferredGroupedFieldsList)}.
-      - Append a record containing {label} and {deferredGroupedFields} to
-        {deferredGroupedFieldsList}.
+      - Append {deferredGroupedFields} to {deferredGroupedFieldsList}.
       - Continue with the next {selection} in {selectionSet}.
     - Let {fragmentGroupedFieldSet} be the result of calling
       {CollectFields(objectType, fragmentSelectionSet, variableValues,
@@ -725,13 +722,10 @@ deferredGroupedFieldsList):
       - If this execution is for a subscription operation, raise a _field
         error_.
     - If {deferDirective} is defined:
-      - Let {label} be the value or the variable to {deferDirective}'s {label}
-        argument.
       - Let {deferredGroupedFields} be the result of calling
         {CollectFields(objectType, fragmentSelectionSet, variableValues,
         visitedFragments, deferredGroupedFieldsList)}.
-      - Append a record containing {label} and {deferredGroupedFields} to
-        {deferredGroupedFieldsList}.
+      - Append {deferredGroupedFields} to {deferredGroupedFieldsList}.
       - Continue with the next {selection} in {selectionSet}.
     - Let {fragmentGroupedFieldSet} be the result of calling
       {CollectFields(objectType, fragmentSelectionSet, variableValues,
@@ -764,7 +758,6 @@ DoesFragmentTypeApply(objectType, fragmentType):
 An Async Payload Record is either a Deferred Fragment Record or a Stream Record.
 All Async Payload Records are structures containing:
 
-- {label}: value derived from the corresponding `@defer` or `@stream` directive.
 - {path}: a list of field names and indices from root to the location of the
   corresponding `@defer` or `@stream` directive.
 - {iterator}: The underlying iterator if created from a `@stream` directive.
@@ -776,10 +769,10 @@ All Async Payload Records are structures containing:
 
 #### Execute Deferred Fragment
 
-ExecuteDeferredFragment(label, objectType, objectValue, groupedFieldSet, path,
+ExecuteDeferredFragment(objectType, objectValue, groupedFieldSet, path,
 variableValues, parentRecord, subsequentPayloads):
 
-- Let {deferRecord} be an async payload record created from {label} and {path}.
+- Let {deferRecord} be an async payload record created from {path}.
 - Initialize {errors} on {deferRecord} to an empty list.
 - Let {dataExecution} be the asynchronous future value of:
   - Let {payload} be an unordered map.
@@ -803,8 +796,6 @@ variableValues, parentRecord, subsequentPayloads):
     - Add an entry to {payload} named `data` with the value {null}.
   - Otherwise:
     - Add an entry to {payload} named `data` with the value {resultMap}.
-  - If {label} is defined:
-    - Add an entry to {payload} named `label` with the value {label}.
   - Add an entry to {payload} named `path` with the value {path}.
   - Return {payload}.
 - Set {dataExecution} on {deferredFragmentRecord}.
@@ -965,11 +956,11 @@ yielded items satisfies `initialCount` specified on the `@stream` directive.
 
 #### Execute Stream Field
 
-ExecuteStreamField(label, iterator, index, fields, innerType, path,
-parentRecord, variableValues, subsequentPayloads):
+ExecuteStreamField(iterator, index, fields, innerType, path, parentRecord,
+variableValues, subsequentPayloads):
 
-- Let {streamRecord} be an async payload record created from {label}, {path},
-  and {iterator}.
+- Let {streamRecord} be an async payload record created from {path}, and
+  {iterator}.
 - Initialize {errors} on {streamRecord} to an empty list.
 - Let {itemPath} be {path} with {index} appended.
 - Let {dataExecution} be the asynchronous future value of:
@@ -987,7 +978,7 @@ parentRecord, variableValues, subsequentPayloads):
       item, variableValues, itemPath, subsequentPayloads, parentRecord)}.
     - Append any encountered field errors to {errors}.
     - Increment {index}.
-    - Call {ExecuteStreamField(label, iterator, index, fields, innerType, path,
+    - Call {ExecuteStreamField(iterator, index, fields, innerType, path,
       streamRecord, variableValues, subsequentPayloads)}.
     - If a field error was raised, causing a {null} to be propagated to {data},
       and {innerType} is a Non-Nullable type:
@@ -997,8 +988,6 @@ parentRecord, variableValues, subsequentPayloads):
         {data}.
   - If {errors} is not empty:
     - Add an entry to {payload} named `errors` with the value {errors}.
-  - If {label} is defined:
-    - Add an entry to {payload} named `label` with the value {label}.
   - Add an entry to {payload} named `path` with the value {itemPath}.
   - If {parentRecord} is defined:
     - Wait for the result of {dataExecution} on {parentRecord}.
@@ -1030,16 +1019,14 @@ subsequentPayloads, asyncRecord):
     - Let {initialCount} be the value or variable provided to
       {streamDirective}'s {initialCount} argument.
     - If {initialCount} is less than zero, raise a _field error_.
-    - Let {label} be the value or variable provided to {streamDirective}'s
-      {label} argument.
   - Let {iterator} be an iterator for {result}.
   - Let {items} be an empty list.
   - Let {index} be zero.
   - While {result} is not closed:
     - If {streamDirective} is defined and {index} is greater than or equal to
       {initialCount}:
-      - Call {ExecuteStreamField(label, iterator, index, fields, innerType,
-        path, asyncRecord, subsequentPayloads)}.
+      - Call {ExecuteStreamField(iterator, index, fields, innerType, path,
+        asyncRecord, subsequentPayloads)}.
       - Return {items}.
     - Otherwise:
       - Wait for the next item from {result} via the {iterator}.
@@ -1179,10 +1166,10 @@ error:
 ```graphql example
 {
   birthday {
-    ... @defer(label: "monthDefer") {
+    ... @defer {
       month
     }
-    ... @defer(label: "yearDefer") {
+    ... @defer {
       year
     }
   }
@@ -1198,16 +1185,14 @@ Response 1, the initial response is sent:
 }
 ```
 
-Response 2, the defer payload for label "monthDefer" is sent. The {data} entry
-has been set to {null}, as this {null} as propagated as high as the error
-boundary will allow.
+Response 2, a defer payload is sent. The {data} entry has been set to {null}, as
+this {null} as propagated as high as the error boundary will allow.
 
 ```json example
 {
   "incremental": [
     {
       "path": ["birthday"],
-      "label": "monthDefer",
       "data": null
     }
   ],
@@ -1215,15 +1200,14 @@ boundary will allow.
 }
 ```
 
-Response 3, the defer payload for label "yearDefer" is sent. The data in this
-payload is unaffected by the previous null error.
+Response 3, another defer payload is sent. The data in this payload is
+unaffected by the previous null error.
 
 ```json example
 {
   "incremental": [
     {
       "path": ["birthday"],
-      "label": "yearDefer",
       "data": { "year": "2022" }
     }
   ],

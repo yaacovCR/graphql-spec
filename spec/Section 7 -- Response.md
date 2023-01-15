@@ -26,12 +26,10 @@ When the response of the GraphQL operation is a response stream, the first value
 will be the initial response. All subsequent values may contain an `incremental`
 entry, containing a list of Defer or Stream payloads.
 
-The `label` and `path` entries on Defer and Stream payloads are used by clients
-to identify the `@defer` or `@stream` directive from the GraphQL operation that
-triggered this response to be included in an `incremental` entry on a value
-returned by the response stream. When a label is provided, the combination of
-these two entries will be unique across all Defer and Stream payloads returned
-in the response stream.
+The `path` entries on Defer and Stream payloads are used by clients to identify
+the `@defer` or `@stream` directive from the GraphQL operation that triggered
+this response to be included in an `incremental` entry on a value returned by
+the response stream.
 
 If the response of the GraphQL operation is a response stream, each response map
 must contain an entry with key `hasNext`. The value of this entry is `true` for
@@ -275,9 +273,9 @@ For example, a query containing both defer and stream:
 ```graphql example
 query {
   person(id: "cGVvcGxlOjE=") {
-    ...HomeWorldFragment @defer(label: "homeWorldDefer")
+    ...HomeWorldFragment @defer
     name
-    films @stream(initialCount: 1, label: "filmsStream") {
+    films @stream(initialCount: 1) {
       title
     }
   }
@@ -312,12 +310,10 @@ Response 2, contains the defer payload and the first stream payload.
 {
   "incremental": [
     {
-      "label": "homeWorldDefer",
       "path": ["person"],
       "data": { "homeWorld": { "name": "Tatooine" } }
     },
     {
-      "label": "filmsStream",
       "path": ["person", "films", 1],
       "items": [{ "title": "The Empire Strikes Back" }]
     }
@@ -335,7 +331,6 @@ would be the final response.
 {
   "incremental": [
     {
-      "label": "filmsStream",
       "path": ["person", "films", 2],
       "items": [{ "title": "Return of the Jedi" }]
     }
@@ -359,7 +354,7 @@ iterator of the `films` field closes.
 A stream payload is a map that may appear as an item in the `incremental` entry
 of a response. A stream payload is the result of an associated `@stream`
 directive in the operation. A stream payload must contain `items` and `path`
-entries and may contain `label`, `errors`, and `extensions` entries.
+entries and may contain `errors` and `extensions` entries.
 
 ##### Items
 
@@ -374,7 +369,7 @@ than the list field with the associated `@stream` directive.
 A defer payload is a map that may appear as an item in the `incremental` entry
 of a response. A defer payload is the result of an associated `@defer` directive
 in the operation. A defer payload must contain `data` and `path` entries and may
-contain `label`, `errors`, and `extensions` entries.
+contain `errors` and `extensions` entries.
 
 ##### Data
 
@@ -410,14 +405,6 @@ of the field containing the associated `@defer` directive.
 
 When the `path` field is present on an "Error result", it indicates the response
 field which experienced the error.
-
-#### Label
-
-Stream and Defer payloads may contain a string field `label`. This `label` is
-the same label passed to the `@defer` or `@stream` directive associated with the
-response. This allows clients to identify which `@defer` or `@stream` directive
-is associated with this value. `label` will not be present if the corresponding
-`@defer` or `@stream` directive is not passed a `label` argument.
 
 ## Serialization Format
 
