@@ -408,9 +408,12 @@ GraphFromRecords(incrementalDataRecords, graph):
   - Let {deferUsageSet} be the Defer Usages incrementally completed by
     {incrementalDataRecord} at {path}.
   - For each {deferUsage} of {deferUsageSet}:
+    - Let {depth} be the corresponding entry on {deferUsage}.
+    - Let {deferUsagePath} be the initial {depth} segments of {path}.
     - If {newGraph} does not contain a Deferred Fragment node representing the
-      completion of {deferUsage} at {path}, reset {newGraph} to the result of
-      {GraphWithDeferredFragmentRecord(deferUsage, path, newGraph)}.
+      completion of {deferUsage} at {deferUsagePath}, reset {newGraph} to the
+      result of {GraphWithDeferredFragmentRecord(deferUsage, deferUsagePath,
+      newGraph)}.
   - Add {incrementalDataRecord} to {newGraph} as a new Pending Data node
     directed from the {deferredFragments} that it completes.
 - Return {newGraph}.
