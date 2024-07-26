@@ -329,12 +329,12 @@ ExecuteRootSelectionSet(variableValues, initialValue, objectType, selectionSet,
 serial):
 
 - If {serial} is not provided, initialize it to {false}.
-- Let {groupedFieldSet} and {newDeferUsages} be the result of
-  {CollectFields(objectType, selectionSet, variableValues)}.
+- Let {groupedFieldSet} be the result of {CollectFields(objectType,
+  selectionSet, variableValues)}.
 - Let {executionPlan} be the result of {BuildExecutionPlan(groupedFieldSet)}.
 - Let {data} and {incrementalDataRecords} be the result of
-  {ExecuteExecutionPlan(newDeferUsages, executionPlan, objectType, initialValue,
-  variableValues, serial)}.
+  {ExecuteExecutionPlan(executionPlan, objectType, initialValue, variableValues,
+  serial)}.
 - Let {errors} be the list of all _field error_ raised while completing {data}.
 - If {incrementalDataRecords} is empty, return an unordered map containing
   {data} and {errors}.
@@ -405,11 +405,31 @@ GraphFromRecords(incrementalDataRecords, graph):
 - Let {newGraph} be a new directed acyclic graph containing all of the nodes and
   edges in {graph}.
 - For each {incrementalDataRecord} of {incrementalDataRecords}:
+  - Let {deferUsageSet} be the Defer Usages incrementally completed by
+    {incrementalDataRecord} at {path}.
+  - For each {deferUsage} of {deferUsageSet}:
+    - Let {depth} be the corresponding entry on {deferUsage}.
+    - Let {deferUsagePath} be the initial {depth} segments of {path}.
+    - If {newGraph} does not contain a Deferred Fragment node representing the
+      completion of {deferUsage} at {deferUsagePath}, reset {newGraph} to the
+      result of {GraphWithDeferredFragmentRecord(deferUsage, deferUsagePath,
+      newGraph)}.
   - Add {incrementalDataRecord} to {newGraph} as a new Pending Data node
-    directed from the {pendingResults} that it completes, adding each of
-    {pendingResults} to {newGraph} as a new node directed from its {parent},
-    recursively adding each {parent} until {incrementalDataRecord} is connected
-    to {newGraph}, or the {parent} is not defined.
+    directed from the {deferredFragments} that it completes.
+- Return {newGraph}.
+
+GraphWithDeferredFragmentRecord(deferUsage, path, graph):
+
+- Let {parentDeferUsage} and {label} be the corresponding entries on
+  {deferUsage}.
+- If {parentDeferUsage} is defined and {graph} does not contain a Deferred
+  Fragment node representing the completion of {parentDeferUsage} at {path}, let
+  {newGraph} be the result of {GraphWithDeferredFragmentRecord(parentDeferUsage,
+  path, newGraph)}; otherwise, let {newGraph} be a new directed acyclic graph
+  containing all of the nodes and edges in {graph}.
+- Let {deferredFragment} be a new unordered map containing {path} and {label}.
+- Add {deferredFragment} to {newGraph} as a new Deferred Fragment node directed
+  from {parent}.
 - Return {newGraph}.
 
 GetNonEmptyNewPending(graph):
@@ -454,8 +474,8 @@ GetIncrementalResult(graph, incremental, completed, pending):
 
 GetIncrementalEntry(incrementalDataRecord, graph):
 
-- Let {deferredFragments} be the Deferred Fragments incrementally completed by
-  {incrementalDataRecord} at {path}.
+- Let {deferredFragments} be the Deferred Fragment nodes within {graph}
+  incrementally completed by {incrementalDataRecord} at {path}.
 - Let {result} be the result of {incrementalDataRecord}.
 - Let {data} and {errors} be the corresponding entries on {result}.
 - Let {releasedDeferredFragments} be the members of {deferredFragments} that are
@@ -496,19 +516,17 @@ To execute a execution plan, the object value being evaluated and the object
 type need to be known, as well as whether the non-deferred grouped field set
 must be executed serially, or may be executed in parallel.
 
-ExecuteExecutionPlan(newDeferUsages, executionPlan, objectType, objectValue,
-variableValues, serial, path, deferUsageSet, deferMap):
+ExecuteExecutionPlan(executionPlan, objectType, objectValue, variableValues,
+serial, path, deferUsageSet):
 
 - If {path} is not provided, initialize it to an empty list.
-- Let {newDeferMap} be the result of {GetNewDeferMap(newDeferUsages, path,
-  deferMap)}.
 - Let {groupedFieldSet} and {newGroupedFieldSets} be the corresponding entries
   on {executionPlan}.
 - Allowing for parallelization, perform the following steps:
   - Let {data} and {nestedIncrementalDataRecords} be the result of running
     {ExecuteGroupedFieldSet(groupedFieldSet, objectType, objectValue,
-    variableValues, path, deferUsageSet, newDeferMap)} _serially_ if {serial} is
-    {true}, _normally_ (allowing parallelization) otherwise.
+    variableValues, path, deferUsageSet)} _serially_ if {serial} is {true},
+    _normally_ (allowing parallelization) otherwise.
   - Let {incrementalDataRecords} be the result of
     {CollectExecutionGroups(objectType, objectValue, variableValues,
     newGroupedFieldSets, path, newDeferMap)}.
@@ -516,47 +534,30 @@ variableValues, serial, path, deferUsageSet, deferMap):
   {incrementalDataRecords}.
 - Return {data} and {incrementalDataRecords}.
 
-GetNewDeferMap(newDeferUsages, path, deferMap):
-
-- If {newDeferUsages} is empty, return {deferMap}:
-- Let {newDeferMap} be a new unordered map containing all entries in {deferMap}.
-- For each {deferUsage} in {newDeferUsages}:
-  - Let {parentDeferUsage} and {label} be the corresponding entries on
-    {deferUsage}.
-  - Let {parent} be the entry in {deferMap} for {parentDeferUsage}.
-  - Let {newDeferredFragment} be an unordered map containing {parent}, {path}
-    and {label}.
-  - Set the entry for {deferUsage} in {newDeferMap} to {newDeferredFragment}.
-- Return {newDeferMap}.
-
 CollectExecutionGroups(objectType, objectValue, variableValues,
-newGroupedFieldSets, path, deferMap):
+newGroupedFieldSets, path):
 
 - Initialize {incrementalDataRecords} to an empty list.
 - For each {deferUsageSet} and {groupedFieldSet} in {newGroupedFieldSets}:
-  - Let {deferredFragments} be an empty list.
-  - For each {deferUsage} in {deferUsageSet}:
-    - Let {deferredFragment} be the entry for {deferUsage} in {deferMap}.
-    - Append {deferredFragment} to {deferredFragments}.
   - Let {incrementalDataRecord} represent the future execution of
     {ExecuteExecutionGroup(groupedFieldSet, objectType, objectValue,
-    variableValues, deferredFragments, path, deferUsageSet, deferMap)},
-    incrementally completing {deferredFragments} at {path}.
+    variableValues, path, deferUsageSet)}, incrementally completing
+    {deferUsageSet} at {path}.
   - Append {incrementalDataRecord} to {incrementalDataRecords}.
   - Schedule initiation of execution of {incrementalDataRecord} following any
     implementation specific deferral.
 - Return {incrementalDataRecords}.
 
 Note: {incrementalDataRecord} can be safely initiated without blocking
-higher-priority data once any of {deferredFragments} are released as pending.
+higher-priority data once any of {deferUsageSet} at {path} are released as
+pending.
 
 ExecuteExecutionGroup(groupedFieldSet, objectType, objectValue, variableValues,
-path, deferUsageSet, deferMap):
+path, deferUsageSet):
 
 - Let {data} and {incrementalDataRecords} be the result of running
   {ExecuteGroupedFieldSet(groupedFieldSet, objectType, objectValue,
-  variableValues, path, deferUsageSet, deferMap)} _normally_ (allowing
-  parallelization).
+  variableValues, path, deferUsageSet)} _normally_ (allowing parallelization).
 - Let {errors} be the list of all _field error_ raised while completing {data}.
 - Return an unordered map containing {data}, {errors}, and
   {incrementalDataRecords}.
@@ -571,7 +572,7 @@ Each represented field in the grouped field set produces an entry into a
 response map.
 
 ExecuteGroupedFieldSet(groupedFieldSet, objectType, objectValue, variableValues,
-path, deferUsageSet, deferMap):
+path, deferUsageSet):
 
 - Initialize {resultMap} to an empty ordered map.
 - Initialize {incrementalDataRecords} to an empty list.
@@ -583,7 +584,7 @@ path, deferUsageSet, deferMap):
   - If {fieldType} is defined:
     - Let {responseValue} and {fieldIncrementalDataRecords} be the result of
       {ExecuteField(objectType, objectValue, fieldType, fields, variableValues,
-      path, deferUsageSet, deferMap)}.
+      path, deferUsageSet)}.
     - Set {responseValue} as the value for {responseKey} in {resultMap}.
     - Append all items in {fieldIncrementalDataRecords} to
       {incrementalDataRecords}.
@@ -747,6 +748,8 @@ Defer Usages contain the following information:
   any, otherwise {undefined}.
 - {parentDeferUsage}: a Defer Usage corresponding to the `@defer` directive
   enclosing this `@defer` directive, if any, otherwise {undefined}.
+- {depth}: the depth within the overall result corresponding to the deferred
+  fields.
 
 The {parentDeferUsage} entry is used to build distinct Execution Groups as
 discussed within the Execution Plan Generation section below.
@@ -761,18 +764,12 @@ A Grouped Field Set is an ordered map of keys to lists of Field Details. The
 keys are the same as that of the response, the alias for the field, if defined,
 otherwise the field name.
 
-The {CollectFields()} algorithm returns:
-
-- {groupedFieldSet}: the Grouped Field Set for the fields in the selection set.
-- {newDeferUsages}: a list of new Defer Usages encountered during this field
-  collection.
-
-CollectFields(objectType, selectionSet, variableValues, deferUsage,
+CollectFields(objectType, selectionSet, variableValues, deferUsage, depth,
 visitedFragments):
 
+- If {depth} is not provided, initialize it to {0}.
 - If {visitedFragments} is not provided, initialize it to the empty set.
 - Initialize {groupedFields} to an empty ordered map of lists.
-- Initialize {newDeferUsages} to an empty list.
 - For each {selection} in {selectionSet}:
   - If {selection} provides the directive `@skip`, let {skipDirective} be that
     directive.
@@ -816,19 +813,18 @@ visitedFragments):
     - If {deferDirective} is defined:
       - Let {label} be the corresponding entry on {deferDirective}.
       - Let {parentDeferUsage} be {deferUsage}.
-      - Let {fragmentDeferUsage} be an unordered map containing {label} and
-        {parentDeferUsage}.
+      - Let {fragmentDeferUsage} be an unordered map containing {label},
+        {parentDeferUsage}, and {depth}.
     - Otherwise, let {fragmentDeferUsage} be {deferUsage}.
-    - Let {fragmentGroupedFieldSet} and {fragmentNewDeferUsages} be the result
-      of calling {CollectFields(objectType, fragmentSelectionSet,
-      variableValues, fragmentDeferUsage, visitedFragments)}.
+    - Let {fragmentGroupedFieldSet} be the result of calling
+      {CollectFields(objectType, fragmentSelectionSet, variableValues,
+      fragmentDeferUsage, depth, visitedFragments)}.
     - For each {fragmentGroup} in {fragmentGroupedFieldSet}:
       - Let {responseKey} be the response key shared by all fields in
         {fragmentGroup}.
       - Let {groupForResponseKey} be the list in {groupedFields} for
         {responseKey}; if no such list exists, create it as an empty list.
       - Append all items in {fragmentGroup} to {groupForResponseKey}.
-    - Append all items in {fragmentNewDeferUsages} to {newDeferUsages}.
   - If {selection} is an {InlineFragment}:
     - Let {fragmentType} be the type condition on {selection}.
     - If {fragmentType} is not {null} and {DoesFragmentTypeApply(objectType,
@@ -844,20 +840,19 @@ visitedFragments):
     - If {deferDirective} is defined:
       - Let {label} be the corresponding entry on {deferDirective}.
       - Let {parentDeferUsage} be {deferUsage}.
-      - Let {fragmentDeferUsage} be an unordered map containing {label} and
-        {parentDeferUsage}.
+      - Let {fragmentDeferUsage} be an unordered map containing {label},
+        {parentDeferUsage}, and {depth}.
     - Otherwise, let {fragmentDeferUsage} be {deferUsage}.
-    - Let {fragmentGroupedFieldSet} and {fragmentNewDeferUsages} be the result
-      of calling {CollectFields(objectType, fragmentSelectionSet,
-      variableValues, fragmentDeferUsage, visitedFragments)}.
+    - Let {fragmentGroupedFieldSet} be the result of calling
+      {CollectFields(objectType, fragmentSelectionSet, variableValues,
+      fragmentDeferUsage, depth, visitedFragments)}.
     - For each {fragmentGroup} in {fragmentGroupedFieldSet}:
       - Let {responseKey} be the response key shared by all fields in
         {fragmentGroup}.
       - Let {groupForResponseKey} be the list in {groupedFields} for
         {responseKey}; if no such list exists, create it as an empty list.
       - Append all items in {fragmentGroup} to {groupForResponseKey}.
-    - Append all items in {fragmentNewDeferUsages} to {newDeferUsages}.
-- Return {groupedFields} and {newDeferUsages}.
+- Return {groupedFields}.
 
 DoesFragmentTypeApply(objectType, fragmentType):
 
@@ -928,7 +923,7 @@ finally completes that value either by recursively executing another selection
 set or coercing a scalar value.
 
 ExecuteField(objectType, objectValue, fieldType, fieldDetailsList,
-variableValues, path, deferUsageSet, deferMap):
+variableValues, path, deferUsageSet):
 
 - Let {fieldDetails} be the first entry in {fieldDetailsList}.
 - Let {field} be the corresponding entry on {fieldDetails}.
@@ -939,7 +934,7 @@ variableValues, path, deferUsageSet, deferMap):
 - Let {resolvedValue} be {ResolveFieldValue(objectType, objectValue, fieldName,
   argumentValues)}.
 - Return the result of {CompleteValue(fieldType, fields, resolvedValue,
-  variableValues, path, deferUsageSet, deferMap)}.
+  variableValues, path, deferUsageSet)}.
 
 ### Coercing Field Arguments
 
@@ -1027,7 +1022,7 @@ the expected return type. If the return type is another Object type, then the
 field execution process continues recursively.
 
 CompleteValue(fieldType, fieldDetailsList, result, variableValues, path,
-deferUsageSet, deferMap):
+deferUsageSet):
 
 - If the {fieldType} is a Non-Null type:
   - Let {innerType} be the inner type of {fieldType}.
@@ -1041,7 +1036,7 @@ deferUsageSet, deferMap):
   - If {result} is not a collection of values, raise a _field error_.
   - Let {innerType} be the inner type of {fieldType}.
   - Return the result of {CompleteListValue(innerType, fieldDetailsList, result,
-    variableValues, path, deferUsageSet, deferMap)}.
+    variableValues, path, deferUsageSet)}.
 - If {fieldType} is a Scalar or Enum type:
   - Return the result of {CoerceResult(fieldType, result)}.
 - If {fieldType} is an Object, Interface, or Union type:
@@ -1049,15 +1044,16 @@ deferUsageSet, deferMap):
     - Let {objectType} be {fieldType}.
   - Otherwise if {fieldType} is an Interface or Union type.
     - Let {objectType} be {ResolveAbstractType(fieldType, result)}.
-  - Let {groupedFieldSet} and {newDeferUsages} be the result of calling
-    {CollectSubfields(objectType, fieldDetailsList, variableValues)}.
+  - Let {depth} be the length of {path}.
+  - Let {groupedFieldSet} be the result of calling {CollectSubfields(objectType,
+    fieldDetailsList, variableValues, depth)}.
   - Let {executionPlan} be the result of {BuildExecutionPlan(groupedFieldSet,
     deferUsageSet)}.
-  - Return the result of {ExecuteExecutionPlan(newDeferUsages, executionPlan,
-    objectType, result, variableValues, false, path, deferUsageSet, deferMap)}.
+  - Return the result of {ExecuteExecutionPlan(executionPlan, objectType,
+    result, variableValues, false, path, deferUsageSet)}.
 
 CompleteListValue(innerType, fieldDetailsList, result, variableValues, path,
-deferUsageSet, deferMap):
+deferUsageSet):
 
 - Initialize {items} and {incrementalDataRecords} to empty lists.
 - Let {index} be {0}.
@@ -1136,22 +1132,20 @@ sub-selections.
 After resolving the value for `me`, the selection sets are merged together so
 `firstName` and `lastName` can be resolved for one value.
 
-CollectSubfields(objectType, fieldDetailsList, variableValues):
+CollectSubfields(objectType, fieldDetailsList, variableValues, depth):
 
 - Initialize {groupedFieldSet} to an empty ordered map of lists.
-- Initialize {newDeferUsages} to an empty list.
 - For each {fieldDetails} in {fieldDetailsList}:
   - Let {field} and {deferUsage} be the corresponding entries on {fieldDetails}.
   - Let {fieldSelectionSet} be the selection set of {field}.
   - If {fieldSelectionSet} is null or empty, continue to the next field.
-  - Let {subGroupedFieldSet} and {subNewDeferUsages} be the result of
-    {CollectFields(objectType, fieldSelectionSet, variableValues, deferUsage)}.
+  - Let {subGroupedFieldSet} be the result of {CollectFields(objectType,
+    fieldSelectionSet, variableValues, deferUsage, depth)}.
   - For each {subGroupedFieldSet} as {responseKey} and {subfields}:
     - Let {groupForResponseKey} be the list in {groupedFieldSet} for
       {responseKey}; if no such list exists, create it as an empty list.
     - Append all fields in {subfields} to {groupForResponseKey}.
-  - Append all defer usages in {subNewDeferUsages} to {newDeferUsages}.
-- Return {groupedFieldSet} and {newDeferUsages}.
+- Return {groupedFieldSet}.
 
 ### Handling Field Errors
 
