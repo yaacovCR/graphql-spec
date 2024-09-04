@@ -609,8 +609,29 @@ validation fails because the fragment spread `...commandFragment(command: SIT)`
 and `...commandFragment(command: DOWN)` are part of the visited selections that
 will be merged.
 
-If both of these spreads had used the same variable for the argument value, it
-would be allowed as we can be sure that we'd resolve identical fields.
+If both of these spreads had used the same value for the argument value, it
+would be allowed as we can be sure that we would resolve identical fields.
+Spreads that use different variables that would always resolve to the same value
+are also valid. For example, the following is valid:
+
+```graphql example
+fragment commandFragment($command: DogCommand!) on Dog {
+  doesKnowCommand(dogCommand: $command)
+}
+
+fragment noConflictWhenPassedOperationCommand(
+  $fragmentCommand: DogCommand!
+) on Dog {
+  ...commandFragment(command: $operationCommand)
+  ...commandFragment(command: $fragmentCommand)
+}
+
+query($operationCommand: DogCommand!) {
+  pet {
+    ...noConflictWhenPassedOperationCommand(fragmentCommand: $operationCommand)
+  }
+}
+```
 
 ### Leaf Field Selections
 
