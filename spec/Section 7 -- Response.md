@@ -10,9 +10,12 @@ the case that any _field error_ was raised on a field and was replaced with
 
 ## Response Format
 
-A response to a GraphQL request must be a map or a response stream of maps. When
-the response of the GraphQL operation is a response stream, the first value will
-be an initial payload, followed by one or more subsequent payloads.
+A response to a GraphQL request must be a map or a stream of incrementally
+delivered results. The response will be a stream of incrementally delivered
+results when the GraphQL service has acted on `@defer` or `@stream` directives
+when executing the operation. When the response of the GraphQL operation
+contains incrementally delivered results, the first value will be an initial
+payload, followed by one or more subsequent payloads.
 
 If the request raised any errors, the response map must contain an entry with
 key `errors`. The value of this entry is described in the "Errors" section. If
@@ -22,21 +25,20 @@ present.
 If the request included execution, the response map must contain an entry with
 key `data`. The value of this entry is described in the "Data" section. If the
 request failed before execution, due to a syntax error, missing information, or
-validation error, this entry must not be present. When the response of the
-GraphQL operation is a response stream, `data` may only be present in the
-initial payload. `data` must not be present in any subsequent payloads.
+validation error, this entry must not be present.
 
-When the response of the GraphQL operation is a response stream, both the
-initial payload and all subsequent payloads must contain an entry with key
-`hasNext`. The value of this entry is `true` for all but the last response in
-the stream. The value of this entry is `false` for the last response of the
-stream. This entry must not be present for GraphQL operations that return a
-single response map.
+When the response of the GraphQL operation contains incrementally delivered
+results, both the initial payload and all subsequent payloads must contain an
+entry with key `hasNext`. The value of this entry must be {true} for all but the
+last response in the stream. The value of this entry must be {false} for the
+last response of the stream. This entry must not be present for GraphQL
+operations that return a single response map.
 
-When the response of the GraphQL operation is a response stream, both the
-initial payload and any subsequent payloads may contain entries with the keys
-`pending`, `incremental`, and/or `completed`. The value of these entries are
-described in the "Pending", "Incremental", and "Completed" sections below.
+When the response of the GraphQL operation contains incrementally delivered
+results, both the initial payload and any subsequent payloads may contain
+entries with the keys `pending`, `incremental`, and/or `completed`. The value of
+these entries are described in the "Pending", "Incremental", and "Completed"
+sections below.
 
 The response map may also contain an entry with key `extensions`. This entry, if
 set, must have a map as its value. This entry is reserved for implementers to
@@ -68,9 +70,9 @@ present in the result.
 If an error was raised during the execution that prevented a valid response, the
 `data` entry in the response should be `null`.
 
-When the response of the GraphQL operation is a response stream, `data` may only
-be present in the initial payload. `data` must not be present in any subsequent
-payloads.
+When the response of the GraphQL operation contains incrementally delivered
+results, `data` may only be present in the initial payload. `data` must not be
+present in any subsequent payloads.
 
 ### Errors
 
@@ -278,9 +280,9 @@ field which experienced the error.
 ### Pending
 
 The `pending` entry in the response is a non-empty list of Pending Results. If
-the response of the GraphQL operation is a response stream, this field may
-appear on both the initial and subsequent payloads. If present, the `pending`
-entry must contain at least one Pending Result.
+the response of the GraphQL operation contains incrementally delivered results,
+this field may appear on both the initial and subsequent payloads. If present,
+the `pending` entry must contain at least one Pending Result.
 
 Each Pending Result corresponds to either a `@defer` or `@stream` directive
 located at a specific path in the response data. The Pending Result is used to
@@ -314,9 +316,10 @@ payload, or one of the Incremental Results in a prior payload.
 ### Incremental
 
 The `incremental` entry in the response is a non-empty list of Incremental
-Results. If the response of the GraphQL operation is a response stream, this
-field may appear on both the initial and subsequent values. If present, the
-`incremental` entry must contain at least one Incremental Result.
+Results. If the response of the GraphQL operation contains incrementally
+delivered results, this field may appear on both the initial and subsequent
+values. If present, the `incremental` entry must contain at least one
+Incremental Result.
 
 The Incremental Result is used to deliver data that the GraphQL service has
 chosen to incrementally deliver. An Incremental Result may be ether an
@@ -403,9 +406,9 @@ the "Errors" section.
 ### Completed
 
 The `completed` entry in the response is a non-empty list of Completed Results.
-If the response of the GraphQL operation is a response stream, this field may
-appear on both the initial and subsequent payloads. If present, the `completed`
-entry must contain at least one Completed Result.
+If the response of the GraphQL operation contains incrementally delivered
+results, this field may appear on both the initial and subsequent payloads. If
+present, the `completed` entry must contain at least one Completed Result.
 
 Each Completed Result corresponds to a prior Pending Result. The Completed
 Result is used to communicate that the GraphQL service has completed the
