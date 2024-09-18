@@ -12,8 +12,8 @@ the case that any _field error_ was raised on a field and was replaced with
 
 A response to a GraphQL request must be a map or a stream of incrementally
 delivered results. The response will be a stream of incrementally delivered
-results when the GraphQL service has acted on `@defer` or `@stream` directives
-when executing the operation. When the response of the GraphQL operation
+results when the GraphQL service has deferred or streamed data as a result of
+the `@defer` or `@stream` directives. When the response of the GraphQL operation
 contains incrementally delivered results, the first value will be an initial
 payload, followed by one or more subsequent payloads.
 
@@ -45,8 +45,8 @@ set, must have a map as its value. This entry is reserved for implementers to
 extend the protocol however they see fit, and hence there are no additional
 restrictions on its contents. When the response of the GraphQL operation is a
 response stream, the initial payload and any subsequent payloads may contain an
-entry with the key `extensions`, also reserved for implementors to extend the
-protocol however they see fit. Additionally, implementors may send subsequent
+entry with the key `extensions`, also reserved for implementers to extend the
+protocol however they see fit. Additionally, implementers may send subsequent
 payloads containing only `hasNext` and `extensions` entries.
 
 To ensure future changes to the protocol do not break existing services and
