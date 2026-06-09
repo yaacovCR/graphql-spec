@@ -673,9 +673,10 @@ variableValues, path, deferUsageSet, deferMap):
   - Let {fieldType} be the return type defined for the field {fieldName} of
     {objectType}.
   - If {fieldType} is defined:
+    - Let {fieldPath} be {path} with {responseName} appended.
     - Let {responseValue} and {fieldWork} be the result of
       {ExecuteField(objectType, objectValue, fieldType, fields, variableValues,
-      path, deferUsageSet, deferMap)}.
+      fieldPath, deferUsageSet, deferMap)}.
     - Let {fieldGroups}, {fieldTasks}, and {fieldStreams} be the corresponding
       entries on {fieldWork}.
     - Set {responseValue} as the value for {responseName} in {resultMap}.
@@ -822,7 +823,6 @@ variableValues, path, deferUsageSet, deferMap):
 - Let {fieldDetails} be the first entry in {fieldDetailsList}.
 - Let {field} be the corresponding entry on {fieldDetails}.
 - Let {fieldName} be the field name of {field}.
-- Append {fieldName} to {path}.
 - Let {argumentValues} be the result of {CoerceArgumentValues(objectType, field,
   variableValues)}.
 - Let {resolvedValue} be {ResolveFieldValue(objectType, objectValue, fieldName,
