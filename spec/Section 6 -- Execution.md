@@ -478,6 +478,34 @@ Field Details Records are unordered maps containing the following entries:
 - {deferUsage}: the Defer Usage enclosing the selection, if any, otherwise
   {undefined}.
 
+Stream Usage Records are unordered maps representing the usage of a `@stream`
+directive while completing a list field. Stream Usages contain the following
+information:
+
+- {label}: the `label` argument provided by the given `@stream` directive, if
+  any, otherwise {undefined}.
+- {initialCount}: the number of list items to include in the current result
+  before subsequent items are streamed.
+- {streamedFieldDetailsList}: a list of Field Details equivalent to the list
+  used to execute the streamed field, except each entry has {deferUsage} set to
+  {undefined}.
+
+Stream Records are unordered maps representing incremental delivery work for
+the portion of a list field not included in the current result. Stream Records
+contain the following information:
+
+- {label}: the `label` argument provided by the associated `@stream` directive,
+  if any, otherwise {undefined}.
+- {path}: the _response path_ of the streamed list.
+- {itemStream}: an event stream of Stream Item Results.
+
+Stream Item Results are unordered maps containing the following information:
+
+- {item}: a completed list item.
+- {errors}: the list of all _execution error_ raised while completing the list
+  item.
+- {work}: any incremental work produced while completing the list item.
+
 A Collected Fields Map is an ordered map of _response name_ to lists of Field
 Details.
 
@@ -963,8 +991,22 @@ CompleteListValue(innerType, fieldDetailsList, result, variableValues, path,
 deferUsageSet, deferMap):
 
 - Initialize {items}, {groups}, {tasks}, and {streams} to empty lists.
+- Let {streamUsage} be the result of {GetStreamUsage(fieldDetailsList,
+  variableValues, path)}.
+- Let {iterator} be an iterator over {result}.
 - Let {index} be {0}.
-- For each {resultItem} of {result}:
+- Repeat:
+  - If {streamUsage} is defined and {index} is equal to the {initialCount} entry
+    on {streamUsage}:
+    - Let {stream} be the result of {CreateStream(streamUsage, innerType,
+      iterator, index, path, variableValues, deferUsageSet, deferMap)}.
+    - Append {stream} to {streams}.
+    - Return {items} and an unordered map containing {groups}, {tasks}, and
+      {streams}.
+  - Let {nextItem} be the next item produced by {iterator}.
+  - If {iterator} has completed, return {items} and an unordered map containing
+    {groups}, {tasks}, and {streams}.
+  - Let {resultItem} be {nextItem}.
   - Let {itemPath} be {path} with {index} appended.
   - Let {completedItem} and {itemWork} be the result of calling
     {CompleteValue(innerType, fieldDetailsList, resultItem, variableValues,
@@ -978,8 +1020,61 @@ deferUsageSet, deferMap):
   - Append all items in {itemTasks} to {tasks}.
   - Append all items in {itemStreams} to {streams}.
   - Increment {index} by {1}.
-- Return {items} and an unordered map containing {groups}, {tasks}, and
-  {streams}.
+
+GetStreamUsage(fieldDetailsList, variableValues, path):
+
+- If the final segment of {path} is an integer, return {undefined}.
+- Let {fieldDetails} be the first entry in {fieldDetailsList}.
+- Let {field} be the corresponding entry on {fieldDetails}.
+- If {field} does not provide the directive `@stream`, return {undefined}.
+- Let {streamDirective} be that directive.
+- If {streamDirective}'s {if} argument is {false} or is a variable in
+  {variableValues} with the value {false}, return {undefined}.
+- If this execution is for a subscription operation, raise an _execution error_.
+- Let {initialCount} be the `initialCount` argument provided by
+  {streamDirective}, or {0} if that argument was not provided.
+- If {initialCount} is a variable, set {initialCount} to the value of that
+  variable in {variableValues}.
+- If {initialCount} is less than {0}, raise an _execution error_.
+- Let {label} be the `label` argument provided by {streamDirective}.
+- If {label} is {null}, set {label} to {undefined}.
+- Let {streamedFieldDetailsList} be a list containing an entry for every
+  {fieldDetails} in {fieldDetailsList}, each containing the same {field} entry
+  and {deferUsage} set to {undefined}.
+- Return an unordered map containing {label}, {initialCount}, and
+  {streamedFieldDetailsList}.
+
+CreateStream(streamUsage, innerType, iterator, initialIndex, path,
+variableValues, deferUsageSet, deferMap):
+
+- Let {label} and {streamedFieldDetailsList} be the corresponding entries on
+  {streamUsage}.
+- Let {itemStream} be a new event stream of Stream Item Results.
+- Let {stream} be an unordered map containing {label}, {path}, and
+  {itemStream}.
+- Let {index} be {initialIndex}.
+- For each remaining {resultItem} produced by {iterator}:
+  - Let {itemPath} be {path} with {index} appended.
+  - Let {streamItemResult} be the result of
+    {CompleteStreamItem(innerType, streamedFieldDetailsList, resultItem,
+    variableValues, itemPath, deferUsageSet, deferMap)}.
+  - If {streamItemResult} raises an _execution error_:
+    - Complete {itemStream} with that _execution error_.
+    - Return {stream}.
+  - Emit {streamItemResult} on {itemStream}.
+  - Increment {index} by {1}.
+- Complete {itemStream}.
+- Return {stream}.
+
+CompleteStreamItem(innerType, fieldDetailsList, resultItem, variableValues,
+itemPath, deferUsageSet, deferMap):
+
+- Let {item} and {work} be the result of calling {CompleteValue(innerType,
+  fieldDetailsList, resultItem, variableValues, itemPath, deferUsageSet,
+  deferMap)}.
+- Let {errors} be the list of all _execution error_ raised while completing
+  {resultItem}.
+- Return an unordered map containing {item}, {errors}, and {work}.
 
 **Coercing Results**
 
@@ -1173,7 +1268,8 @@ MapIncrementalWorkEventsToResponseEvent(workEventStream):
       - Let {id} be the result of {EnsureID(stream)}.
       - Initialize {items} and {streamErrors} to empty lists.
       - For each {value} in {values}:
-        - Append the stream item entry from {value} to {items}.
+        - Let {item} be the corresponding entry on {value}.
+        - Append {item} to {items}.
         - If {value} contains {errors}, append each such error to
           {streamErrors}.
       - Let {incrementalEntry} be an unordered map containing {id} and {items}.
